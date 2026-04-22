@@ -8,18 +8,30 @@ BASE_DIR = Path(__file__).parent.parent
 DATA_DIR = BASE_DIR / "data"
 DB_PATH = BASE_DIR / "paper_trader.db"
 
-# Portfolio settings
+# Portfolio settings - AGGRESSIVE MODE
 INITIAL_CASH = 100_000.00
-COMMISSION_RATE = 0.001  # 0.1% per trade (typical for discount brokers)
-MAX_POSITION_PCT = 0.15  # Max 15% of portfolio per position
-MAX_POSITIONS = 10       # Max simultaneous positions
+COMMISSION_RATE = 0.001  # 0.1% per trade
+MAX_POSITION_PCT = 0.25  # Max 25% per position - concentrated bets
+MAX_POSITIONS = 6        # Fewer, bigger positions
 
-# Universe of stocks to trade
+# Universe - high-volatility mix for higher return potential
 UNIVERSE = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA",
-    "META", "TSLA", "JPM", "V", "JNJ",
-    "WMT", "PG", "MA", "UNH", "HD",
-    "DIS", "NFLX", "AMD", "PYPL", "INTC",
+    # Leveraged ETFs (3x daily moves)
+    "TQQQ",   # 3x Nasdaq
+    "SOXL",   # 3x Semiconductors
+    "SPXL",   # 3x S&P 500
+    "LABU",   # 3x Biotech
+    "TNA",    # 3x Russell 2000
+    "UPRO",   # 3x S&P 500
+    # High-beta tech
+    "NVDA", "TSLA", "AMD", "META", "PLTR",
+    "COIN", "MSTR", "SMCI", "ARM", "AVGO",
+    # Crypto
+    "BTC-USD", "ETH-USD", "SOL-USD",
+    # High-vol / meme
+    "GME", "AMC", "MARA", "RIOT",
+    # Standard large caps for stability
+    "AAPL", "MSFT", "GOOGL", "AMZN",
 ]
 
 # Lookback period for strategy signals (trading days)
@@ -65,11 +77,11 @@ STRATEGY_CONFIGS = {
     },
 }
 
-# Signal thresholds
-BUY_CONSENSUS_THRESHOLD = 0.4   # 40% of strategies must agree to buy
-SELL_CONSENSUS_THRESHOLD = 0.3  # 30% of strategies must agree to sell
+# Signal thresholds - higher bar for entry (quality over quantity)
+BUY_CONSENSUS_THRESHOLD = 0.5   # 50% of strategies must agree to buy
+SELL_CONSENSUS_THRESHOLD = 0.3  # 30% to sell (cut fast)
 
-# Risk management
-STOP_LOSS_PCT = 0.07       # 7% stop loss
-TAKE_PROFIT_PCT = 0.15     # 15% take profit
-TRAILING_STOP_PCT = 0.05   # 5% trailing stop
+# Risk management - aggressive: tight stops, let winners run
+STOP_LOSS_PCT = 0.04       # 4% stop loss (cut losers fast)
+TAKE_PROFIT_PCT = 0.25     # 25% take profit (let winners run)
+TRAILING_STOP_PCT = 0.06   # 6% trailing stop (protect gains)
