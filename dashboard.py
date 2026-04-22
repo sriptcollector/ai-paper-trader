@@ -289,22 +289,24 @@ def load_all_data():
 
 
 # ─── Plotly defaults ──────────────────────────────────────────
-CHART_LAYOUT = dict(
+_AXIS_DEFAULTS = dict(gridcolor="rgba(255,255,255,0.03)", zerolinecolor="rgba(255,255,255,0.06)")
+
+_BASE_LAYOUT = dict(
     template="plotly_dark",
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
     font=dict(family="Inter, -apple-system, sans-serif", color="rgba(255,255,255,0.6)", size=12),
-    xaxis=dict(
-        gridcolor="rgba(255,255,255,0.03)",
-        zerolinecolor="rgba(255,255,255,0.06)",
-    ),
-    yaxis=dict(
-        gridcolor="rgba(255,255,255,0.03)",
-        zerolinecolor="rgba(255,255,255,0.06)",
-    ),
     margin=dict(l=0, r=0, t=40, b=0),
     hoverlabel=dict(bgcolor="#1c1c1e", font_color="#ffffff", bordercolor="rgba(0,0,0,0)"),
 )
+
+def chart_layout(height=400, showlegend=False, xaxis=None, yaxis=None, **kwargs):
+    """Build a plotly layout dict, merging axis defaults with overrides."""
+    layout = {**_BASE_LAYOUT, "height": height, "showlegend": showlegend}
+    layout["xaxis"] = {**_AXIS_DEFAULTS, **(xaxis or {})}
+    layout["yaxis"] = {**_AXIS_DEFAULTS, **(yaxis or {})}
+    layout.update(kwargs)
+    return layout
 
 GREEN = "#34c759"
 RED = "#ff453a"
@@ -421,10 +423,9 @@ if page == "Overview":
                           line_color="rgba(255,255,255,0.1)",
                           annotation_text=f"${INITIAL_CASH:,.0f}",
                           annotation_font_color="rgba(255,255,255,0.25)")
-            fig.update_layout(
-                **CHART_LAYOUT, height=420, showlegend=False,
-                yaxis=dict(**CHART_LAYOUT["yaxis"], tickprefix="$", tickformat=",.0f"),
-            )
+            fig.update_layout(**chart_layout(
+                height=420, yaxis=dict(tickprefix="$", tickformat=",.0f"),
+            ))
             st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
         with tab2:
@@ -435,10 +436,9 @@ if page == "Overview":
                     x=snapshots["date"], y=snapshots["daily_return_pct"],
                     marker_color=colors, marker_line_width=0,
                 ))
-                fig2.update_layout(
-                    **CHART_LAYOUT, height=380, showlegend=False,
-                    yaxis=dict(**CHART_LAYOUT["yaxis"], ticksuffix="%"),
-                )
+                fig2.update_layout(**chart_layout(
+                    height=380, yaxis=dict(ticksuffix="%"),
+                ))
                 st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
     else:
         st.info("Run a trading cycle to see performance data.")
@@ -497,12 +497,10 @@ elif page == "Strategies":
             textposition="outside",
             textfont=dict(size=14, color="rgba(255,255,255,0.7)"),
         ))
-        fig.update_layout(
-            **CHART_LAYOUT, height=280, showlegend=False,
-            yaxis=dict(**CHART_LAYOUT["yaxis"], ticksuffix="%", title=None),
-            xaxis=dict(**CHART_LAYOUT["xaxis"], title=None),
-            bargap=0.4,
-        )
+        fig.update_layout(**chart_layout(
+            height=280, yaxis=dict(ticksuffix="%", title=None),
+            xaxis=dict(title=None), bargap=0.4,
+        ))
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
         st.markdown("")
@@ -574,12 +572,10 @@ elif page == "Strategies":
             textposition="outside",
             textfont=dict(size=13, color="rgba(255,255,255,0.5)"),
         ))
-        fig_w.update_layout(
-            **CHART_LAYOUT, height=240, showlegend=False,
-            yaxis=dict(**CHART_LAYOUT["yaxis"], title=None),
-            xaxis=dict(**CHART_LAYOUT["xaxis"], title=None),
-            bargap=0.4,
-        )
+        fig_w.update_layout(**chart_layout(
+            height=240, yaxis=dict(title=None),
+            xaxis=dict(title=None), bargap=0.4,
+        ))
         st.plotly_chart(fig_w, use_container_width=True, config={"displayModeBar": False})
 
 
@@ -703,11 +699,10 @@ elif page == "Trades":
                 marker_line_width=0,
             ))
             fig.add_vline(x=0, line_dash="dot", line_color="rgba(255,255,255,0.15)")
-            fig.update_layout(
-                **CHART_LAYOUT, height=280, showlegend=False,
-                xaxis=dict(**CHART_LAYOUT["xaxis"], title=None, tickprefix="$"),
-                yaxis=dict(**CHART_LAYOUT["yaxis"], title=None),
-            )
+            fig.update_layout(**chart_layout(
+                height=280, xaxis=dict(title=None, tickprefix="$"),
+                yaxis=dict(title=None),
+            ))
             st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
@@ -748,11 +743,10 @@ elif page == "Signals":
             showscale=False,
             xgap=2, ygap=2,
         ))
-        fig.update_layout(
-            **CHART_LAYOUT,
+        fig.update_layout(**chart_layout(
             height=max(450, len(pivot) * 28 + 80),
-            xaxis=dict(**CHART_LAYOUT["xaxis"], side="top"),
-        )
+            xaxis=dict(side="top"),
+        ))
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
         # Consensus summary
