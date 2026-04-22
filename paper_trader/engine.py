@@ -17,7 +17,7 @@ from paper_trader.config import (
     UNIVERSE, LOOKBACK_DAYS, STRATEGY_CONFIGS, COMMISSION_RATE,
     MAX_POSITION_PCT, MAX_POSITIONS, BUY_CONSENSUS_THRESHOLD,
     SELL_CONSENSUS_THRESHOLD, STOP_LOSS_PCT, TAKE_PROFIT_PCT,
-    TRAILING_STOP_PCT, DATA_DIR,
+    TRAILING_STOP_PCT, DATA_DIR, LEVERAGE,
 )
 from paper_trader.database import PortfolioDB
 
@@ -41,11 +41,23 @@ STRATEGY_CLASSES = {
     "TripleRsiStrategy": TripleRsiStrategy,
 }
 
+# Custom Python-only strategies
+from paper_trader.custom_strategies import CUSTOM_STRATEGIES
 
-def fetch_market_data(symbols: list[str], lookback_days: int = LOOKBACK_DAYS) -> dict[str, pd.DataFrame]:
-    """Fetch recent OHLCV data for all symbols using yfinance."""
+
+def fetch_market_data(symbols: list[str], lookback_days: int = LOOKBACK_DAYS,
+                       interval: str = "1d") -> dict[str, pd.DataFrame]:
+    """Fetch recent OHLCV data for all symbols using yfinance.
+
+    interval: "1d" for daily, "15m" for 15-minute intraday, etc.
+    """
     end_date = date.today()
-    start_date = end_date - timedelta(days=int(lookback_days * 1.5))  # Extra buffer for weekends
+
+    # Intraday data has yfinance limits: 15m/5m/1m only up to 60 days
+    if interval != "1d":
+        start_date = end_date - timedelta(days=min(lookback_days, 58))
+    else:
+        start_date = end_date - timedelta(days=int(lookback_days * 1.5))
 
     data = {}
     try:
@@ -53,7 +65,7 @@ def fetch_market_data(symbols: list[str], lookback_days: int = LOOKBACK_DAYS) ->
         tickers_str = " ".join(symbols)
         raw = yf.download(tickers_str, start=start_date.isoformat(),
                           end=end_date.isoformat(), group_by="ticker",
-                          auto_adjust=True, progress=False)
+                          auto_adjust=True, progress=False, interval=interval)
 
         if raw.empty:
             return data
@@ -160,18 +172,31 @@ def get_current_prices(symbols: list[str]) -> dict[str, float]:
     return prices
 
 
-def run_trading_cycle():
-    """Execute one complete trading cycle."""
+def run_trading_cycle(intraday: bool = False):
+    """Execute one complete trading cycle.
+
+    intraday=True uses 15-minute bars for more frequent signals (60-day lookback).
+    """
     db = PortfolioDB()
-    db.log("INFO", "Starting trading cycle", f"Date: {date.today().isoformat()}")
+    mode = "INTRADAY (15m)" if intraday else "DAILY"
+    db.log("INFO", f"Starting {mode} trading cycle",
+           f"Time: {datetime.now().isoformat()}")
 
     print(f"\n{'='*60}")
-    print(f"PAPER TRADING CYCLE - {date.today().isoformat()}")
+    print(f"PAPER TRADING CYCLE - {mode} - {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print(f"{'='*60}")
 
     # 1. Fetch market data
     print("\n[1/6] Fetching market data...")
-    market_data = fetch_market_data(UNIVERSE)
+    interval = "15m" if intraday else "1d"
+    # Intraday: use crypto + liquid leveraged ETFs only (yf intraday is limited)
+    if intraday:
+        intraday_universe = [s for s in UNIVERSE if "-USD" in s or s in
+                             {"TQQQ", "SOXL", "SPXL", "UPRO", "TNA", "LABU",
+                              "NVDA", "TSLA", "AMD", "AAPL", "MSFT", "GOOGL", "AMZN", "META"}]
+        market_data = fetch_market_data(intraday_universe, lookback_days=58, interval="15m")
+    else:
+        market_data = fetch_market_data(UNIVERSE)
     available_symbols = list(market_data.keys())
     print(f"  Got data for {len(available_symbols)}/{len(UNIVERSE)} symbols")
 
@@ -196,8 +221,20 @@ def run_trading_cycle():
         all_signals[symbol] = {}
         df = market_data[symbol]
 
+        # Backtrader-based strategies
         for strat_name, strat_config in STRATEGY_CONFIGS.items():
+            if strat_config.get("class") == "_custom":
+                continue  # handled below
             signal = get_signal_for_strategy(df, strat_name, strat_config)
+            all_signals[symbol][strat_name] = signal
+            db.save_signal(symbol, strat_name, signal)
+
+        # Custom Python-only strategies (breakout, momentum surge, etc.)
+        for strat_name, strat_config in CUSTOM_STRATEGIES.items():
+            try:
+                signal = strat_config["func"](df, **strat_config["params"])
+            except Exception:
+                signal = "HOLD"
             all_signals[symbol][strat_name] = signal
             db.save_signal(symbol, strat_name, signal)
 
@@ -299,15 +336,22 @@ def run_trading_cycle():
 
         cash = db.get_cash()
         price = current_prices[symbol]
-        portfolio_value = cash + sum(
+
+        # Compute equity (positions_value + cash - margin_used)
+        positions_value = sum(
             p["shares"] * current_prices.get(p["symbol"], p["avg_cost"])
             for p in positions
         )
+        equity = cash + positions_value
+        buying_power = equity * LEVERAGE - positions_value  # how much more we can buy on margin
 
-        max_invest = portfolio_value * MAX_POSITION_PCT
-        invest_amount = min(max_invest, cash * 0.9)  # Keep 10% cash buffer
+        # Scale position size by consensus strength: higher consensus = bigger bet
+        size_multiplier = 1.0 + max(0, consensus - 0.5)  # 1.0x at 50%, up to 1.5x at 100%
+        target_position_size = equity * MAX_POSITION_PCT * size_multiplier
 
-        if invest_amount < 100:  # Minimum trade size
+        invest_amount = min(target_position_size, buying_power * 0.95)
+
+        if invest_amount < 100:
             continue
 
         shares = int(invest_amount / price)
@@ -315,7 +359,8 @@ def run_trading_cycle():
             continue
 
         strategies = [s for s, sig in all_signals[symbol].items() if sig == "BUY"]
-        print(f"  BUY {shares} x {symbol} @ ${price:.2f} (consensus: {consensus*100:.0f}%, strategies: {', '.join(strategies)})")
+        leverage_note = f"${invest_amount:,.0f} on ${equity:,.0f} equity ({invest_amount/equity:.1f}x)"
+        print(f"  BUY {shares} x {symbol} @ ${price:.2f} (consensus: {consensus*100:.0f}%, {leverage_note})")
         _execute_buy(db, symbol, shares, price, f"consensus_buy ({consensus*100:.0f}%)")
 
     # 6. Save daily snapshot
@@ -368,20 +413,13 @@ def run_trading_cycle():
 
 
 def _execute_buy(db: PortfolioDB, symbol: str, shares: int, price: float, reason: str):
-    """Execute a paper BUY trade."""
+    """Execute a paper BUY trade (margin allowed - cash can go negative up to leverage limit)."""
     cost = shares * price
     commission = cost * COMMISSION_RATE
     total_cost = cost + commission
 
     cash = db.get_cash()
-    if total_cost > cash:
-        shares = int((cash * 0.99) / (price * (1 + COMMISSION_RATE)))
-        if shares < 1:
-            return
-        cost = shares * price
-        commission = cost * COMMISSION_RATE
-        total_cost = cost + commission
-
+    # Margin allowed - we just deduct; cash can go negative (borrowed funds)
     db.update_cash(cash - total_cost)
     db.open_position(
         symbol=symbol,

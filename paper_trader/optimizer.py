@@ -84,6 +84,9 @@ def optimize_weights():
     strategy_scores = {}
 
     for strat_name, strat_config in STRATEGY_CONFIGS.items():
+        # Skip custom Python-only strategies (no backtrader class)
+        if strat_config.get("class") == "_custom":
+            continue
         cls = STRATEGY_CLASSES.get(strat_config["class"])
         if cls is None:
             continue

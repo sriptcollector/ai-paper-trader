@@ -146,6 +146,10 @@ total_value = cash + pos_value
 total_return = ((total_value / INITIAL_CASH) - 1) * 100
 daily_ret = snapshots.iloc[-1]["daily_return_pct"] if not snapshots.empty else 0
 
+# Leverage metrics
+margin_used = max(0, -cash)  # Negative cash = borrowed
+leverage_ratio = pos_value / total_value if total_value > 0 else 0
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # CHART HELPER
@@ -221,15 +225,26 @@ with st.sidebar:
 # DASHBOARD PAGE
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 if page == "Dashboard":
+    # Aggressive mode banner
+    if leverage_ratio > 1.0:
+        st.markdown(f"""
+        <div style="background:linear-gradient(90deg,rgba(255,69,58,0.15),rgba(255,149,0,0.15));
+                    border:1px solid rgba(255,149,0,0.3);border-radius:10px;
+                    padding:8px 16px;margin-bottom:16px;display:flex;justify-content:space-between">
+            <span style="color:#ff9500;font-weight:600;font-size:13px">⚡ AGGRESSIVE MODE — 3x Leverage Enabled</span>
+            <span style="color:#ff9500;font-size:12px">Leverage: {leverage_ratio:.2f}x &middot; Margin Used: ${margin_used:,.0f}</span>
+        </div>""", unsafe_allow_html=True)
+
     st.markdown("# Dashboard")
 
-    # Top metrics
-    c1, c2, c3, c4, c5 = st.columns(5)
+    # Top metrics - 6 columns including leverage
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("Total Value", f"${total_value:,.2f}", f"{total_return:+.2f}%")
-    c2.metric("Cash", f"${cash:,.2f}")
-    c3.metric("Invested", f"${pos_value:,.2f}")
-    c4.metric("Positions", str(len(positions)))
-    c5.metric("Today", f"{daily_ret:+.2f}%" if daily_ret else "---")
+    c2.metric("Equity", f"${total_value:,.0f}")
+    c3.metric("Exposure", f"${pos_value:,.0f}", f"{leverage_ratio:.2f}x" if leverage_ratio > 0 else None)
+    c4.metric("Margin", f"${margin_used:,.0f}" if margin_used > 0 else "$0")
+    c5.metric("Positions", str(len(positions)))
+    c6.metric("Today", f"{daily_ret:+.2f}%" if daily_ret else "---")
 
     st.markdown("")
 

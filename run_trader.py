@@ -84,6 +84,8 @@ def main():
 
     if command == "trade":
         run_trading_cycle()
+    elif command == "intraday":
+        run_trading_cycle(intraday=True)
     elif command == "optimize":
         optimize_weights()
     elif command == "full":
