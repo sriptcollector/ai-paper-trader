@@ -314,9 +314,15 @@ GRAY = "rgba(255,255,255,0.15)"
 
 # ─── Check DB ─────────────────────────────────────────────────
 if not DB_PATH.exists():
-    st.markdown("### No data yet")
-    st.caption("Run `python run_trader.py trade` to start.")
-    st.stop()
+    # Auto-init with sample data for cloud deployments
+    try:
+        from init_cloud import seed_sample_data
+        seed_sample_data()
+        st.rerun()
+    except Exception:
+        st.markdown("### No data yet")
+        st.caption("Run `python run_trader.py trade` to start.")
+        st.stop()
 
 data = load_all_data()
 if not data:
