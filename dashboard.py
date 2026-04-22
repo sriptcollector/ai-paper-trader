@@ -64,6 +64,11 @@ STRATEGY_INFO = {
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 st.set_page_config(page_title="Paper Trader", layout="wide", initial_sidebar_state="expanded")
 
+# Auto-refresh every 20 seconds so new trades appear without manual refresh
+st.markdown("""
+<meta http-equiv="refresh" content="20">
+""", unsafe_allow_html=True)
+
 st.markdown("""<style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 *{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif!important}
@@ -111,7 +116,7 @@ if not DB_PATH.exists():
         st.stop()
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=10)
 def load_data():
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
