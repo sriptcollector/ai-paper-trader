@@ -124,7 +124,7 @@ def load_data():
     d["cash"] = (conn.execute("SELECT cash FROM portfolio WHERE id=1").fetchone() or {"cash": INITIAL_CASH})["cash"]
     d["positions"] = pd.read_sql("SELECT * FROM positions ORDER BY symbol", conn)
     d["trades"] = pd.read_sql("SELECT * FROM trades ORDER BY executed_at DESC LIMIT 500", conn)
-    d["snapshots"] = pd.read_sql("SELECT * FROM portfolio_snapshots ORDER BY date", conn)
+    d["snapshots"] = pd.read_sql("SELECT * FROM portfolio_snapshots ORDER BY timestamp", conn)
     d["strategies"] = pd.read_sql("SELECT * FROM strategy_performance WHERE date=(SELECT MAX(date) FROM strategy_performance) ORDER BY backtest_return_pct DESC NULLS LAST", conn)
     d["signals"] = pd.read_sql("SELECT * FROM signals WHERE date=(SELECT MAX(date) FROM signals) ORDER BY symbol, strategy", conn)
     d["logs"] = pd.read_sql("SELECT * FROM system_log ORDER BY created_at DESC LIMIT 50", conn)
@@ -133,6 +133,7 @@ def load_data():
         d["trades"]["executed_at"] = pd.to_datetime(d["trades"]["executed_at"])
     if not d["snapshots"].empty:
         d["snapshots"]["date"] = pd.to_datetime(d["snapshots"]["date"])
+        d["snapshots"]["timestamp"] = pd.to_datetime(d["snapshots"]["timestamp"])
     return d
 
 
@@ -146,6 +147,7 @@ trades = D["trades"]
 strategies = D["strategies"]
 signals = D["signals"]
 
+snapshots = snapshots.sort_values("timestamp") if "timestamp" in snapshots.columns and not snapshots.empty else snapshots
 pos_value = snapshots.iloc[-1]["positions_value"] if not snapshots.empty else (positions["shares"] * positions["avg_cost"]).sum() if not positions.empty else 0
 total_value = cash + pos_value
 total_return = ((total_value / INITIAL_CASH) - 1) * 100
@@ -259,10 +261,11 @@ if page == "Dashboard":
         with tab1:
             fig = go.Figure()
             fig.add_trace(go.Scatter(
-                x=snapshots["date"], y=snapshots["total_value"],
-                mode="lines", line=dict(color="#fff", width=2),
+                x=snapshots["timestamp"], y=snapshots["total_value"],
+                mode="lines+markers", line=dict(color="#fff", width=2),
+                marker=dict(size=4, color="#fff"),
                 fill="tonexty", fillcolor="rgba(255,255,255,0.02)",
-                hovertemplate="$%{y:,.0f}<extra></extra>",
+                hovertemplate="%{x|%b %d %H:%M}<br>$%{y:,.0f}<extra></extra>",
             ))
             fig.add_hline(y=INITIAL_CASH, line_dash="dot", line_color="#222",
                           annotation_text=f"Start ${INITIAL_CASH:,.0f}",
@@ -274,9 +277,9 @@ if page == "Dashboard":
             colors = [G if x >= 0 else R for x in snapshots["daily_return_pct"]]
             fig2 = go.Figure()
             fig2.add_trace(go.Bar(
-                x=snapshots["date"], y=snapshots["daily_return_pct"],
+                x=snapshots["timestamp"], y=snapshots["daily_return_pct"],
                 marker_color=colors, marker_line_width=0,
-                hovertemplate="%{y:+.2f}%<extra></extra>",
+                hovertemplate="%{x|%b %d %H:%M}<br>%{y:+.2f}%<extra></extra>",
             ))
             fig2.update_layout(**clayout(h=350, ya=dict(ticksuffix="%")))
             show_chart(fig2)

@@ -221,28 +221,30 @@ class PortfolioDB:
     # --- Snapshots ---
     def save_snapshot(self, cash: float, positions_value: float, num_positions: int,
                       snapshot_data: dict = None):
-        today = date.today().isoformat()
+        now = datetime.utcnow()
+        today = now.date().isoformat()
+        timestamp = now.isoformat()
         total_value = cash + positions_value
 
-        # Calculate returns
         conn = self._conn()
         prev = conn.execute(
-            "SELECT total_value FROM portfolio_snapshots ORDER BY date DESC LIMIT 1"
+            "SELECT total_value FROM portfolio_snapshots ORDER BY timestamp DESC LIMIT 1"
         ).fetchone()
 
         if prev:
-            daily_return = ((total_value / prev["total_value"]) - 1) * 100
+            ret_since_last = ((total_value / prev["total_value"]) - 1) * 100
         else:
-            daily_return = 0.0
+            ret_since_last = 0.0
 
         cumulative_return = ((total_value / INITIAL_CASH) - 1) * 100
 
+        # New row per cycle so we get an intraday equity curve
         conn.execute(
-            """INSERT OR REPLACE INTO portfolio_snapshots
-               (date, cash, positions_value, total_value, daily_return_pct,
+            """INSERT INTO portfolio_snapshots
+               (date, timestamp, cash, positions_value, total_value, daily_return_pct,
                 cumulative_return_pct, num_positions, snapshot_data)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (today, cash, positions_value, total_value, daily_return,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (today, timestamp, cash, positions_value, total_value, ret_since_last,
              cumulative_return, num_positions, json.dumps(snapshot_data or {})),
         )
         conn.commit()
